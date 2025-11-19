@@ -1,12 +1,25 @@
-let express=require("express")
-let mongoose=require("mongoose")
-let multer=require("multer")
-let cors=require("cors")
-let path=require("path")
-let bcrypt=require("bcrypt")
-let jwt=require("jsonwebtoken")
-let bookstoreapi=require("./router/Bookstore")
+let express = require("express");
+let mongoose = require("mongoose");
+let multer = require("multer");
+let cors = require("cors");
+let path = require("path");
+let bcrypt = require("bcrypt");
+let jwt = require("jsonwebtoken");
 require("dotenv").config();
+
+let app = express();
+
+// ---------------------------
+// MIDDLEWARE (must be first)
+// ---------------------------
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static("uploads"));
+
+// ---------------------------
+// MULTER SETUP
+// ---------------------------
 const fs = require("fs");
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
@@ -20,148 +33,130 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + "-" + file.originalname);
   }
 });
+let upload = multer({ storage });
 
-let upload= multer({ storage });
-
-
-let app=express();
-
-
-app.use(express.static(path.join(__dirname, "./client/build")));
-
-
-app.use((req, res) => {
-  res.sendFile(path.join(__dirname, "./client/build/index.html"));
+// ---------------------------
+// MONGOOSE MODELS
+// ---------------------------
+let userSchema = new mongoose.Schema({
+  firstName: String,
+  lastName: String,
+  email: String,
+  password: String,
+  mobileNumber: String,
+  profilepic: String
 });
 
+let User = mongoose.model("bhava", userSchema, "mydetails");
 
-app.use(express.json())
-app.use(cors())
-app.use("/uploads", express.static("uploads"));
-
-
-let schema=new mongoose.Schema({
-    firstName:String,
-    lastName:String,
-    email:String,
-    password:String,
-    mobileNumber:String,
-    profilepic:String
-    
-})
-let model=mongoose.model("bhava",schema,"mydetails")
 const bookSchema = new mongoose.Schema({
   Authorname: String,
   bookName: String,
   parName: String,
   rate: Number
 });
+let Bookstore = mongoose.model("bhavan", bookSchema, "empl");
 
-let bookstore = mongoose.model("bhavan",bookSchema,"empl")
+// ---------------------------
+// API ROUTES (MUST come BEFORE serving React)
+// ---------------------------
 
+// SIGNUP
+app.post("/signup", upload.single("profilepicref"), async (req, res) => {
+  try {
+    let hashed = await bcrypt.hash(req.body.password, 10);
+
+    let user = new User({
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      email: req.body.email,
+      password: hashed,
+      mobileNumber: req.body.mobileNumber,
+      profilepic: req.file ? req.file.filename : null
+    });
+
+    await user.save();
+    res.json({ status: 200, msg: "User created successfully" });
+  } catch (err) {
+    console.log(err);
+    res.json({ status: 500, msg: "Signup failed" });
+  }
+});
+
+// LOGIN
+app.post("/login", upload.none(), async (req, res) => {
+  let user = await User.findOne({ email: req.body.email });
+
+  if (!user) {
+    return res.json({ status: 404, msg: "Invalid email" });
+  }
+
+  let isMatch = await bcrypt.compare(req.body.password, user.password);
+  if (!isMatch) {
+    return res.json({ status: 404, msg: "Invalid password" });
+  }
+
+  let token = jwt.sign(
+    { email: user.email },
+    process.env.JWT_SECRET
+  );
+
+  res.json({
+    status: 200,
+    msg: "Login success",
+    data: {
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      mobileNumber: user.mobileNumber,
+      token,
+      profilepic: user.profilepic
+    }
+  });
+});
+
+// TOKEN LOAD
+app.post("/load", upload.none(), async (req, res) => {
+  try {
+    let token = jwt.verify(req.body.token, process.env.JWT_SECRET);
+
+    let user = await User.findOne({ email: token.email });
+    if (!user) return res.json({ status: 404, msg: "User not found" });
+
+    res.json({
+      status: 200,
+      msg: "Token valid",
+      data: user
+    });
+  } catch (err) {
+    return res.json({ status: 403, msg: "Invalid token" });
+  }
+});
+
+// BOOKSTORE GET
 app.get("/bookstore", async (req, res) => {
   try {
-    let data = await bookstore.find();
-    res.json({ status: 200, msg: "retrieved", data:data });
+    let data = await Bookstore.find();
+    res.json({ status: 200, msg: "retrieved", data });
   } catch (err) {
     res.json({ status: 404, msg: "not retrieved" });
   }
 });
 
-
-app.post("/signup",upload.single("profilepicref"),async(req,res)=>{
-  let hasspassword=await bcrypt.hash(req.body.password,10)
-   let object=new model({
-    firstName:req.body.firstName,
-    lastName:req.body.lastName,
-    email:req.body.email,
-    password:hasspassword,
-    mobileNumber:req.body.mobileNumber,
-    profilepic: req.file.filename 
-})
-object.save()
-res.json({status:200,msg:"data is inserted is succesfully"})
-})
-app.post("/login",upload.none(),async(req,res)=>{
-   let object=await model.find({email:req.body.email})
-    
-   if(object.length!==0 ){
-    let hasspassword=await bcrypt.compare(req.body.password,object[0].password)
-   console.log(hasspassword)
-    if(hasspassword){
-      let token=jwt.sign({email:req.body.email,password:req.body.password},process.env.JWT_SECRET)
-      let datasend={
-        firstName:object[0].firstName,
-        lastName:object[0].lastName,
-        email:object[0].email,
-        mobileNumber:object[0].mobileNumber,
-        token:token,
-        profilepic:object[0].profilepic
-      }
-      try{
-       res.json({status:200,msg:"your crediential are correct",data:datasend} )
-       console.log(datasend)
-      }
-      catch(err){
-        res.json({status:404,msg:"your credientials or wrong"})
-      }
-      
-    }
-    else{
-      res.json({status:404,msg:"invalidpassword"})
-    }
-   }
-   else{
-    res.json({msg:"invalid"})
-   }
-})
-app.post("/load",upload.none(),async(req,res)=>{
-  console.log("TOKEN RECEIVED FROM FRONTEND:", req.body.token);
-  let token= jwt.verify(req.body.token,process.env.JWT_SECRET)
-  console.log(token)
-  let object=await model.find({email:token.email})
-  console.log(object)
-  if(object.length!==0){
-    if(object[0].password===token.password){
-       let datasend={
-        firstName:object[0].firstName,
-        lastName:object[0].lastName,
-        email:object[0].email,
-        mobileNumber:object[0].mobileNumber,
-        password:token,
-        profilepic:object[0].profilepic
-      }
-      try{
-       res.json({status:200,msg:"your crediential are correct",data:datasend} )
-       console.log(datasend)
-      }
-      catch(err){
-        res.json({status:404,msg:"your credientials or wrong"})
-      }
-    }
-  }
- 
-})
-app.patch("/upadte", upload.single("profilepic"), async (req, res) => {
+// UPDATE
+app.patch("/update", upload.single("profilepic"), async (req, res) => {
   try {
-    console.log("BODY:", req.body);
-    // console.log("FILE:", req.file);
-
     let updateData = {
       firstName: req.body.firstName,
-      // password: req.body.,
+      lastName: req.body.lastName,
       mobileNumber: req.body.mobileNumber
     };
 
-    // if (req.file) {
-    //   updateData.profilepic = req.file.filename;
-    // }
+    if (req.file) {
+      updateData.profilepic = req.file.filename;
+    }
 
-    let result = await model.updateOne(
-      { email: req.body.email },
-      { $set: updateData }
-    );
-    await model.updateOne({email:req.body.email},{lastName:req.body.lastName})
+    await User.updateOne({ email: req.body.email }, { $set: updateData });
 
     res.status(200).json("updated successfully");
   } catch (err) {
@@ -170,36 +165,34 @@ app.patch("/upadte", upload.single("profilepic"), async (req, res) => {
   }
 });
 
-app.delete("/delete",upload.none(),async(req,res)=>{
-  console.log("EMAIL RECEIVED:", req.body.email);
-  let deleteddat=  await model.deleteMany({email:req.body.email})
-  if(deleteddat.deletedCount>0){
-    res.status(200).json("deleted succesfully")
+// DELETE
+app.delete("/delete", upload.none(), async (req, res) => {
+  let result = await User.deleteOne({ email: req.body.email });
+
+  if (result.deletedCount > 0) {
+    res.status(200).json("deleted successfully");
+  } else {
+    res.status(404).json("not deleted");
   }
-  else{
-    res.status(404).json(" not deleted succesfully")
-  }
-  console.log(deleteddat)
-})
+});
 
-let myfunction=async()=>{
-    try{
-  await  mongoose.connect('mongodb+srv://bhavanarayanachukka:narayana123@cluster0.2ybtcaq.mongodb.net/MERN2506?retryWrites=true&w=majority&appName=Cluster0')
-      console.log("sucessfully connected to databse")
-      console.log("sucessfully connected to databse");
-console.log("Connected DB name:", mongoose.connection.name);
-mongoose.connection.db.listCollections().toArray().then(cols => {
-  console.log("Collections in DB:", cols.map(c => c.name));
-}).catch(err => console.log("List collections err:", err.message));
+// ---------------------------
+// SERVE REACT BUILD (MUST come last)
+// ---------------------------
+app.use(express.static(path.join(__dirname, "./client/build")));
 
-    }
-    catch(err){
-      console.log({status:404,msg:"not connected to database something is went wrong"})
-    }
-}
-myfunction()
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "./client/build/index.html"));
+});
 
+// ---------------------------
+// START SERVER
+// ---------------------------
+mongoose
+  .connect(process.env.MONGO_URL)
+  .then(() => console.log("Connected to DB"))
+  .catch((err) => console.log("DB connection failed"));
 
-app.listen(process.env.PORT,()=>{
-    console.log("server is running in the port number 1111")
-})
+app.listen(process.env.PORT || 5000, () => {
+  console.log("Server started");
+});
