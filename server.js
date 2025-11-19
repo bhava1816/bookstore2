@@ -27,12 +27,7 @@ let upload= multer({ storage });
 let app=express();
 
 
-app.use(express.static(path.join(__dirname, "./client/build")));
 
-
-app.use((req, res) => {
-  res.sendFile(path.join(__dirname, "./client/build/index.html"));
-});
 
 
 app.use(express.json())
@@ -181,7 +176,12 @@ app.delete("/delete",upload.none(),async(req,res)=>{
   }
   console.log(deleteddat)
 })
+app.use(express.static(path.join(__dirname, "./client/build")));
 
+
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, "./client/build/index.html"));
+});
 let myfunction=async()=>{
     try{
   await  mongoose.connect('mongodb+srv://bhavanarayanachukka:narayana123@cluster0.2ybtcaq.mongodb.net/MERN2506?retryWrites=true&w=majority&appName=Cluster0')
