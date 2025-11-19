@@ -18,7 +18,7 @@ let myfunction=async()=>{
     mybody.append("password",passwordref.current.value)
     mybody.append("mobileNumber",mobileNumberref.current.value)
     mybody.append("profilepicref",profilepicref.current.files[0])
-   let response= await fetch("http://localhost:1111/signup",{method:"POST",body:mybody})
+   let response= await fetch("/signup",{method:"POST",body:mybody})
    let jsodata=await response.json()
    console.log(jsodata);
 
